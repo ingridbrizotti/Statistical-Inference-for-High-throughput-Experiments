@@ -1,0 +1,159 @@
+---
+title: "Statistical Inference for High-throughput Experiments"
+output: pdf_document
+---
+
+The objective is to show in a high-throughput experiment we can not rely just on p-value to check significance. 
+
+In this study, I'll check if a specific drug it's influencing different genes. To do this, I'd used three data sets available on GitHub with a bunch of measures of various genes in case and control groups.
+
+High-throughput experiment: have measurements from many features that are taken simultaneously. The central principle is parallelization; this means that rather than carrying out single experiments one after another, you can run several tests simultaneously and consequently decrease costs.
+
+\hspace*{1cm}
+
+**Dataset:** GSE5859Subset (https://github.com/genomicsclass/GSE5859Subset)
+
+**Approach:** check significance using t-test, compare results with Monte Carlo simulation, and apply Bonferroni correction
+
+**Package:** genefilter (to run t test faster)
+
+**Key words:** high-throughput experiment, t-test, Bonferroni correction, Monte Carlo simulation
+
+\hspace*{2cm}
+**Steps:**
+
+**1) Load packages and data**
+
+**2) Check normality**
+
+**3) Apply t test**
+
+**4) Generate a Monte Carlo simulation and apply t test**
+
+**5) Bonferroni correction**
+
+
+\hspace*{2cm}
+
+
+**1) Load packages and data**
+
+The data set is available on GitHub and I used two packages.
+
+```{r}
+#install_github("genomicsclass/GSE5859Subset")
+library(GSE5859Subset)
+data(GSE5859Subset) ##this loads the three tables
+
+library(rafalib)
+library(genefilter)
+
+head(geneAnnotation, n=2)
+str(geneAnnotation)
+
+head(geneExpression, n=2)
+str(geneExpression)
+
+head(sampleInfo, n=2)
+str(sampleInfo)
+
+```
+
+
+**2) Check normality**
+
+```{r}
+g <- sampleInfo$group
+e <- geneExpression[4,] # random choose gene 4
+
+mypar(1,2)
+
+# cases
+qqnorm(e[g==1])
+qqline(e[g==1])
+
+# controls
+qqnorm(e[g==0])
+qqline(e[g==0])
+
+```
+The data has a normal distribution
+
+
+\hspace*{2cm}
+
+**3) Apply t test**
+
+```{r}
+
+# Apply t test for the entire data set
+mytest <- function(x){
+        t.test(x[g==1],x[g==0],var.equal = TRUE)$p.value
+}
+
+# apply for genes - rows (1- row, 2-column)
+pvals <- apply(geneExpression,1,mytest)
+
+# Check number of genes (rows) are significant
+sum( pvals <= 0.05)
+
+```
+We 13834 genes that are significant, but this result is not correct because in high-throughput experiments, the standard approach of using p-values is not useful. This happens because the P-value is only statistically valid when a single score is computed. And we can prove this creating a Monte Carlo simulation and apply a t test too.
+
+
+\hspace*{2cm}
+
+**4) Generate a Monte Carlo simulation and apply t test**
+
+Monte Carlo simulation relies on repeated random sampling to obtain numerical results.
+Their essential idea is using randomness to solve problems that might be deterministic
+in principle.
+
+
+```{r}
+# create a matrix using the MONTE CARLO SIMULATION with the same size of geneExpression data set
+m <- nrow(geneExpression)
+n <- ncol(geneExpression)
+
+randomData <- matrix(rnorm(n*m),m,n)
+
+# apply the test (knowing the null hypothesis is true for every single feature)
+nullpvals <- apply(randomData,1,mytest) 
+sum( nullpvals<=0.05)
+
+```
+
+We have 428 significant genes, but actually we have 428 false positive because we created a bunch of random normal numbers, independent, no relationship to the cases and controls using Monte Carlo simulation.
+
+\hspace*{2cm}
+
+**5) Apply Bonferroni correction**
+
+```{r}
+
+g <- factor(sampleInfo$group)  #factor 1 and 0
+results <- rowttests(geneExpression,g) # run test
+pvals <- results$p.value
+mean( pvals <0.05)
+
+# How many genes have p-values smaller than 0.05 (are significant)?
+sum( pvals <0.05)
+# [1] 1383
+
+# or
+table(pvals<0.05)
+
+
+
+# Apply the Bonferroni correction to the p-values 
+# sum(pvals <= alpha/m)
+sum(pvals <= 0.05/8793)
+
+```
+
+So 10 genes are called significant after Bonferroni correction.
+
+Bonferroni is more conservative because divides the alpha per number of hypothesis being tested, but this correction is used to reduce the chances of obtaining false-positive results (type I errors).
+
+
+
